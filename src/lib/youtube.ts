@@ -1,12 +1,16 @@
+
 import type { Video, YouTubePlaylist } from '@/types';
 import { formatDistanceToNowStrict, parseISO } from 'date-fns';
 
 const YOUTUBE_API_BASE_URL = 'https://www.googleapis.com/youtube/v3';
 
 // Helper to format ISO duration (PT1M30S) to "1:30"
+// This function now assumes isoDuration is a valid string if called.
 function formatYouTubeDuration(isoDuration: string): string {
   const match = isoDuration.match(/PT(?:(\d+)H)?(?:(\d+)M)?(?:(\d+)S)?/);
-  if (!match) return "0:00";
+  // isoDuration should always be valid if this function is called, 
+  // based on the logic in fetchPlaylistItems. Fallback just in case.
+  if (!match) return "0:00"; 
 
   const hours = parseInt(match[1] || '0');
   const minutes = parseInt(match[2] || '0');
@@ -27,6 +31,7 @@ function formatYouTubeDuration(isoDuration: string): string {
 function formatViewCount(viewCountStr: string | undefined): string {
   if (!viewCountStr) return "N/A views";
   const views = parseInt(viewCountStr);
+  if (isNaN(views)) return "N/A views";
   if (views >= 1_000_000_000) return (views / 1_000_000_000).toFixed(1) + 'B views';
   if (views >= 1_000_000) return (views / 1_000_000).toFixed(1) + 'M views';
   if (views >= 1_000) return (views / 1_000).toFixed(1) + 'K views';
@@ -112,11 +117,11 @@ export async function fetchChannelPlaylists(apiKey: string, channelId: string): 
     const data = await response.json();
     return data.items.map((item: any) => ({
       id: item.id,
-      title: item.snippet.title,
-      description: item.snippet.description,
-      thumbnailUrl: item.snippet.thumbnails?.medium?.url || item.snippet.thumbnails?.default?.url || 'https://placehold.co/320x180.png?text=Playlist',
-      itemCount: item.contentDetails.itemCount,
-      publishedAt: item.snippet.publishedAt,
+      title: item.snippet?.title || "Untitled Playlist",
+      description: item.snippet?.description,
+      thumbnailUrl: item.snippet?.thumbnails?.medium?.url || item.snippet?.thumbnails?.default?.url || 'https://placehold.co/320x180.png?text=Playlist',
+      itemCount: item.contentDetails?.itemCount || 0,
+      publishedAt: item.snippet?.publishedAt,
     }));
   } catch (error) {
     console.error('Error fetching channel playlists:', error);
@@ -155,28 +160,41 @@ export async function fetchPlaylistItems(apiKey: string, playlistId: string, max
     const playlistItemDetails = data.items.reduce((acc: any, item: any) => {
         if(item.contentDetails?.videoId) {
             acc[item.contentDetails.videoId] = {
-                playlistId: item.snippet.playlistId,
-                position: item.snippet.position
+                playlistId: item.snippet?.playlistId,
+                position: item.snippet?.position
             };
         }
         return acc;
     }, {});
 
 
-    return videosData.items.map((video: any) => ({
-      id: video.id,
-      title: video.snippet.title,
-      thumbnailUrl: video.snippet.thumbnails?.medium?.url || video.snippet.thumbnails?.default?.url || `https://placehold.co/600x400.png?text=Video`,
-      duration: formatYouTubeDuration(video.contentDetails.duration),
-      uploadDate: formatUploadDate(video.snippet.publishedAt), // Using relative time
-      viewCount: formatViewCount(video.statistics?.viewCount),
-      channelName: video.snippet.channelTitle,
-      description: video.snippet.description,
-      availableQualities: ['1080p', '720p', '480p', '360p'], // Mocked, as API doesn't provide this easily
-      publishedAt: video.snippet.publishedAt, // Raw ISO date
-      playlistId: playlistItemDetails[video.id]?.playlistId,
-      // playlist: can be added if playlist name is passed or fetched separately
-    }));
+    return videosData.items.map((video: any) => {
+      let durationStr: string;
+      if (video.snippet?.liveBroadcastContent === 'live') {
+        durationStr = 'LIVE';
+      } else if (video.contentDetails?.duration && video.contentDetails.duration !== 'PT0S') {
+        durationStr = formatYouTubeDuration(video.contentDetails.duration);
+      } else if (video.contentDetails?.duration === 'PT0S' && video.snippet?.liveBroadcastContent === 'upcoming') {
+        durationStr = 'Upcoming'; // Or 'Premiere'
+      }
+      else {
+        durationStr = 'N/A';
+      }
+
+      return {
+        id: video.id,
+        title: video.snippet?.title || "Untitled Video",
+        thumbnailUrl: video.snippet?.thumbnails?.medium?.url || video.snippet?.thumbnails?.default?.url || `https://placehold.co/600x400.png?text=Video`,
+        duration: durationStr,
+        uploadDate: formatUploadDate(video.snippet?.publishedAt),
+        viewCount: formatViewCount(video.statistics?.viewCount),
+        channelName: video.snippet?.channelTitle || "Unknown Channel",
+        description: video.snippet?.description,
+        availableQualities: ['1080p', '720p', '480p', '360p'], // Mocked
+        publishedAt: video.snippet?.publishedAt, // Raw ISO date
+        playlistId: playlistItemDetails[video.id]?.playlistId,
+      };
+    });
   } catch (error) {
     console.error(`Error fetching items for playlist ${playlistId}:`, error);
     throw error;
