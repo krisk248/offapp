@@ -6,34 +6,33 @@ import { Button } from '@/components/ui/button';
 import { Progress } from '@/components/ui/progress';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Card, CardContent, CardHeader, CardTitle, CardFooter } from '@/components/ui/card';
-import { Download, PauseCircle, PlayCircle, Trash2, XCircle, CheckCircle, Clock, ExternalLink, ServerCrash } from 'lucide-react';
+import { Download, PauseCircle, PlayCircle, Trash2, CheckCircle, Clock, Archive, ServerCrash } from 'lucide-react';
 import type { DownloadItem } from '@/types';
 import Image from 'next/image';
+import { useToast } from '@/hooks/use-toast';
+import { useState } from 'react';
 
 export default function DownloadPanel() {
   const { state, dispatch, initiateServerDownload } = useAppContext();
   const { downloadQueue } = state;
+  const { toast } = useToast();
+  const [isZipping, setIsZipping] = useState(false);
 
   const handlePause = (videoId: string) => {
-    // Pausing a server-side yt-dlp process via frontend is complex and not implemented.
-    // This could change status to 'paused' locally if we want to prevent new auto-starts.
     dispatch({ type: 'SET_DOWNLOAD_ITEM_STATUS', payload: { videoId, status: 'paused' } });
     console.log(`[Download Panel] Paused (simulated) for video ID: ${videoId}`);
   };
 
   const handleResume = (item: DownloadItem) => {
-    // If it was 'paused' locally, and not yet started on server, or if server failed:
     if (item.status === 'paused' || item.status === 'error') {
         console.log(`[Download Panel] Resuming/Retrying download for: ${item.title}`);
-        initiateServerDownload(item); // Re-trigger the API call
+        initiateServerDownload(item); 
     } else {
         console.log(`[Download Panel] Resume called for item with status ${item.status}, no action taken.`);
     }
   };
 
   const handleCancel = (videoId: string) => {
-    // Cancelling an in-progress yt-dlp on server is also complex.
-    // This will remove it from the client queue. If it's downloading, server will continue.
     dispatch({ type: 'REMOVE_FROM_DOWNLOAD_QUEUE', payload: videoId });
     console.log(`[Download Panel] Canceled/Removed from queue: ${videoId}`);
   };
@@ -42,47 +41,117 @@ export default function DownloadPanel() {
     dispatch({type: 'CLEAR_COMPLETED_DOWNLOADS'});
   }
 
+  const handleDownloadAllAsZip = async () => {
+    const readyItems = state.downloadQueue.filter(item => item.status === 'server_download_ready' && item.filename);
+    if (readyItems.length === 0) {
+      toast({ title: "No Videos Ready", description: "No videos are currently ready to be included in a ZIP.", variant: "default" });
+      return;
+    }
+  
+    const filenames = readyItems.map(item => item.filename!); 
+    console.log('[Download Panel] Requesting ZIP for filenames:', filenames);
+  
+    setIsZipping(true);
+    try {
+      const response = await fetch('/api/zip-downloads', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ filenames }),
+      });
+  
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({ message: "Failed to create ZIP. Server returned an error." }));
+        console.error('[Download Panel] ZIP Creation Failed on server:', errorData);
+        toast({ title: "ZIP Creation Failed", description: errorData.message || "Could not create ZIP file.", variant: "destructive" });
+        return;
+      }
+  
+      const blob = await response.blob();
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      
+      const contentDisposition = response.headers.get('content-disposition');
+      let downloadFilename = `OfflineTube_Downloads_${new Date().toISOString().split('T')[0]}.zip`;
+      if (contentDisposition) {
+        const filenameMatch = contentDisposition.match(/filename="?(.+)"?/i);
+        if (filenameMatch && filenameMatch.length > 1) {
+          downloadFilename = filenameMatch[1];
+        }
+      }
+      a.download = downloadFilename;
+
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a); 
+      window.URL.revokeObjectURL(url);
+      toast({ title: "ZIP Download Started", description: "Your ZIP archive is downloading." });
+  
+    } catch (error: any) {
+      console.error('[Download Panel] Error requesting ZIP:', error);
+      toast({ title: "ZIP Request Error", description: error.message || "Could not request ZIP file from server.", variant: "destructive" });
+    } finally {
+      setIsZipping(false);
+    }
+  };
+
+
   const getStatusIcon = (status: DownloadItem['status']) => {
     switch (status) {
       case 'queued':
       case 'initiating_server_download':
         return <Clock className="h-4 w-4 text-muted-foreground animate-pulse" />;
-      case 'server_downloading': // This status might be brief as API responds on start
+      case 'server_downloading': 
         return <Download className="h-4 w-4 text-blue-500 animate-pulse" />;
       case 'server_download_ready':
         return <CheckCircle className="h-4 w-4 text-green-500" />;
       case 'paused':
         return <PauseCircle className="h-4 w-4 text-yellow-500" />;
       case 'error':
-        return <ServerCrash className="h-4 w-4 text-destructive" />; // Changed icon for server error
-      case 'completed': // If we want a final "user downloaded" state
+        return <ServerCrash className="h-4 w-4 text-destructive" />;
+      case 'completed': 
         return <CheckCircle className="h-4 w-4 text-green-700" />;
       default:
         return null;
     }
   };
   
+  const readyForZipCount = downloadQueue.filter(item => item.status === 'server_download_ready' && item.filename).length;
   const totalProgress = downloadQueue.length > 0 
     ? downloadQueue.reduce((acc, item) => acc + (item.status === 'server_download_ready' || item.status === 'completed' ? 100 : item.progress), 0) / downloadQueue.length
     : 0;
 
   return (
-    <Card className="shadow-lg rounded-lg flex flex-col max-h-[calc(100vh-200px)]">
+    <Card className="shadow-lg rounded-lg flex flex-col"> {/* Removed max-h for page context */}
       <CardHeader className="border-b">
-        <CardTitle className="text-xl font-headline flex items-center">
-          <Download className="mr-2 h-6 w-6 text-primary" />
-          Download Queue
+        <CardTitle className="text-xl font-headline flex items-center justify-between">
+          <span>
+            <Download className="mr-2 h-6 w-6 text-primary inline-block" />
+            Download Queue
+          </span>
+          {readyForZipCount > 0 && (
+            <Button 
+              onClick={handleDownloadAllAsZip} 
+              variant="default" 
+              size="sm"
+              disabled={isZipping}
+              className="bg-accent hover:bg-accent/90"
+            >
+              <Archive className="mr-2 h-4 w-4" />
+              {isZipping ? 'Zipping...' : `Download All Ready as ZIP (${readyForZipCount})`}
+            </Button>
+          )}
         </CardTitle>
       </CardHeader>
       <CardContent className="p-0 flex-grow overflow-hidden">
         {downloadQueue.length === 0 ? (
-          <div className="p-6 text-center text-muted-foreground h-full flex flex-col justify-center items-center">
+          <div className="p-6 text-center text-muted-foreground h-full flex flex-col justify-center items-center min-h-[300px]">
             <DownloadCloudIcon className="w-16 h-16 mb-4 text-gray-300" />
             <p>Your download queue is empty.</p>
-            <p className="text-sm">Select videos and click download.</p>
+            <p className="text-sm">Select videos from the main page and add them to the queue.</p>
           </div>
         ) : (
-          <ScrollArea className="h-full p-1">
+          <ScrollArea className="h-full p-1 max-h-[calc(100vh-350px)] sm:max-h-[calc(100vh-300px)]"> {/* Adjusted max-h */}
             <div className="space-y-3 p-3">
             {downloadQueue.map(item => (
               <div key={item.id} className="p-3 border rounded-md bg-background/50">
@@ -118,12 +187,12 @@ export default function DownloadPanel() {
                      item.status === 'initiating_server_download' ? 'Starting...' :
                      item.status === 'error' ? 'Failed' :
                      item.status.replace(/_/g, ' ')} 
-                    { (item.status !== 'server_download_ready' && item.status !== 'error') && ` - ${item.progress}%`}
+                    { (item.status !== 'server_download_ready' && item.status !== 'error') && ` - ${item.progress.toFixed(0)}%`}
                   </span>
 
                   {item.status === 'server_download_ready' && item.downloadUrl && (
                      <Button asChild variant="default" size="sm" className="h-7 bg-accent hover:bg-accent/90">
-                        <a href={item.downloadUrl} download target="_blank" rel="noopener noreferrer">
+                        <a href={item.downloadUrl} download={item.filename || true} target="_blank" rel="noopener noreferrer">
                             <Download className="h-4 w-4 mr-1" /> Download Now
                         </a>
                      </Button>
@@ -154,7 +223,7 @@ export default function DownloadPanel() {
       {downloadQueue.length > 0 && (
         <CardFooter className="border-t p-4 space-y-2 flex-col items-stretch">
             <div className="flex justify-between items-center text-sm mb-1">
-                <span>Overall Progress (Server Downloads)</span>
+                <span>Overall Server Download Progress</span>
                 <span className="font-semibold text-accent">{totalProgress.toFixed(0)}%</span>
             </div>
             <Progress value={totalProgress} className="h-3 [&>div]:bg-primary" />

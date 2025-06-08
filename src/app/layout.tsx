@@ -1,6 +1,7 @@
 import type { Metadata } from 'next';
 import './globals.css';
 import { Toaster } from "@/components/ui/toaster";
+import { AppProvider } from '@/store/app-context'; // Import AppProvider
 
 export const metadata: Metadata = {
   title: 'OfflineTube',
@@ -20,8 +21,10 @@ export default function RootLayout({
         <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet" />
       </head>
       <body className="font-body antialiased">
-        {children}
-        <Toaster />
+        <AppProvider> {/* Wrap children with AppProvider */}
+          {children}
+          <Toaster />
+        </AppProvider>
       </body>
     </html>
   );

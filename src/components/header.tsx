@@ -1,10 +1,11 @@
 "use client";
 
-import { Youtube, Settings, DownloadCloud, CheckCircle } from 'lucide-react';
+import { Youtube, Settings, DownloadCloud, CheckCircle, Archive } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { useAppContext } from '@/store/app-context';
-import SettingsDialog from './settings-dialog'; // Will be created
+import SettingsDialog from './settings-dialog';
 import { useState } from 'react';
+import Link from 'next/link';
 
 export default function Header() {
   const { state, dispatch } = useAppContext();
@@ -13,11 +14,11 @@ export default function Header() {
   const selectedCount = state.selectedVideos.size;
   const videosToDownload = state.videos.filter(v => state.selectedVideos.has(v.id));
 
-  const handleDownloadAll = () => {
+  const handleDownloadAllSelectedToQueue = () => {
     if (videosToDownload.length > 0) {
       dispatch({ type: 'ADD_TO_DOWNLOAD_QUEUE', payload: videosToDownload });
-      // Optionally clear selection after adding to queue
-      // dispatch({ type: 'DESELECT_ALL_VIDEOS' }); 
+      // Clear selection after adding to queue, so the "Download Selected" button resets
+      dispatch({ type: 'DESELECT_ALL_VIDEOS' }); 
     }
   };
 
@@ -26,9 +27,9 @@ export default function Header() {
       <div className="container mx-auto px-4 py-3 flex items-center justify-between">
         <div className="flex items-center gap-3">
           <Youtube className="h-8 w-8 text-primary" />
-          <h1 className="text-2xl font-headline font-semibold text-foreground">
+          <Link href="/" className="text-2xl font-headline font-semibold text-foreground hover:text-primary transition-colors">
             OfflineTube
-          </h1>
+          </Link>
           <span className="text-sm text-muted-foreground ml-2 hidden sm:inline">
             {state.channelName}
           </span>
@@ -42,13 +43,18 @@ export default function Header() {
           )}
           <Button 
             variant="default" 
-            size="lg"
-            onClick={handleDownloadAll}
+            size="lg" // Kept size lg for prominence
+            onClick={handleDownloadAllSelectedToQueue}
             disabled={selectedCount === 0}
             className="bg-accent hover:bg-accent/90 text-accent-foreground"
           >
             <DownloadCloud className="mr-2 h-5 w-5" />
-            Download {selectedCount > 0 ? `(${selectedCount})` : 'Selected'}
+            Add to Queue {selectedCount > 0 ? `(${selectedCount})` : ''}
+          </Button>
+          <Button variant="outline" size="icon" asChild aria-label="View Downloads">
+            <Link href="/downloads">
+              <Archive className="h-5 w-5" />
+            </Link>
           </Button>
           <Button variant="outline" size="icon" onClick={() => setIsSettingsOpen(true)} aria-label="Settings">
             <Settings className="h-5 w-5" />
