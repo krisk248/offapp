@@ -21,6 +21,7 @@ import {
 import { useAppContext } from '@/store/app-context';
 import type { AppSettings } from '@/types';
 import { useEffect, useState } from 'react';
+import { useToast } from '@/hooks/use-toast';
 
 interface SettingsDialogProps {
   isOpen: boolean;
@@ -30,6 +31,7 @@ interface SettingsDialogProps {
 export default function SettingsDialog({ isOpen, onOpenChange }: SettingsDialogProps) {
   const { state, dispatch } = useAppContext();
   const [localSettings, setLocalSettings] = useState<AppSettings>(state.settings);
+  const { toast } = useToast();
 
   useEffect(() => {
     setLocalSettings(state.settings);
@@ -51,17 +53,37 @@ export default function SettingsDialog({ isOpen, onOpenChange }: SettingsDialogP
   };
 
   const handleSaveChanges = () => {
+    if (!localSettings.apiKey) {
+      toast({
+        title: "API Key Missing",
+        description: "Please enter your YouTube API Key.",
+        variant: "destructive",
+      });
+      return;
+    }
+    if (!localSettings.channelUrl) {
+      toast({
+        title: "Channel URL Missing",
+        description: "Please enter the YouTube Channel URL.",
+        variant: "destructive",
+      });
+      return;
+    }
     dispatch({ type: 'UPDATE_SETTINGS', payload: localSettings });
+    toast({
+      title: "Settings Saved",
+      description: "Your settings have been updated.",
+    });
     onOpenChange(false);
   };
 
   return (
     <Dialog open={isOpen} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-[480px]">
+      <DialogContent className="sm:max-w-[520px]">
         <DialogHeader>
           <DialogTitle className="font-headline">App Settings</DialogTitle>
           <DialogDescription>
-            Configure your preferences for OfflineTube.
+            Configure your preferences for OfflineTube. API Key and Channel URL are required.
           </DialogDescription>
         </DialogHeader>
         <div className="grid gap-6 py-4">
@@ -80,6 +102,19 @@ export default function SettingsDialog({ isOpen, onOpenChange }: SettingsDialogP
             />
           </div>
           <div className="grid grid-cols-4 items-center gap-4">
+            <Label htmlFor="channelUrl" className="text-right col-span-1">
+              Channel URL
+            </Label>
+            <Input
+              id="channelUrl"
+              name="channelUrl"
+              value={localSettings.channelUrl}
+              onChange={handleInputChange}
+              className="col-span-3"
+              placeholder="e.g., https://www.youtube.com/@YourChannel"
+            />
+          </div>
+          <div className="grid grid-cols-4 items-center gap-4">
             <Label htmlFor="defaultQuality" className="text-right col-span-1">
               Default Quality
             </Label>
@@ -95,6 +130,7 @@ export default function SettingsDialog({ isOpen, onOpenChange }: SettingsDialogP
                 <SelectItem value="1080p">1080p</SelectItem>
                 <SelectItem value="720p">720p</SelectItem>
                 <SelectItem value="480p">480p</SelectItem>
+                <SelectItem value="360p">360p</SelectItem>
               </SelectContent>
             </Select>
           </div>
@@ -108,7 +144,7 @@ export default function SettingsDialog({ isOpen, onOpenChange }: SettingsDialogP
               value={localSettings.downloadPathPreference}
               onChange={handleInputChange}
               className="col-span-3"
-              placeholder="e.g., On My iPad/OfflineTube"
+              placeholder="e.g., /Downloads/OfflineTube"
             />
           </div>
           <div className="grid grid-cols-4 items-center gap-4">

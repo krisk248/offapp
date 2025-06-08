@@ -10,7 +10,8 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import { Label } from '@/components/ui/label';
-import { Search, ListFilter, CalendarRange, CheckSquare, XSquare, ChevronDown } from 'lucide-react';
+import { Card } from '@/components/ui/card';
+import { Search, ListFilter, CalendarRange, CheckSquare, XSquare } from 'lucide-react';
 import { useAppContext } from '@/store/app-context';
 import { Popover, PopoverTrigger, PopoverContent } from '@/components/ui/popover';
 import { Calendar } from '@/components/ui/calendar';
@@ -21,27 +22,30 @@ import { format } from 'date-fns';
 export default function ControlsPanel() {
   const { state, dispatch } = useAppContext();
   const [searchTerm, setSearchTerm] = useState('');
-  const [playlistFilter, setPlaylistFilter] = useState('all');
+  // playlistFilter now managed by state.selectedPlaylistId
   const [dateRange, setDateRange] = useState<DateRange | undefined>(undefined);
-
-  // Note: Actual filtering logic would typically be handled by dispatching actions 
-  // to update the displayed video list in the context or by applying filters client-side if appropriate.
-  // For this example, these are UI elements.
 
   const handleSelectAll = () => dispatch({ type: 'SELECT_ALL_VIDEOS' });
   const handleDeselectAll = () => dispatch({ type: 'DESELECT_ALL_VIDEOS' });
 
-  // Mock playlists - in a real app, these would come from API data
-  const playlists = ['All Playlists', 'Tutorials', 'Vlogs', 'Product Reviews'];
-  const qualityOptions = ['1080p', '720p', '480p'];
+  const qualityOptions = ['1080p', '720p', '480p', '360p'];
 
-
+  const handlePlaylistChange = (playlistId: string) => {
+    dispatch({ type: 'SET_SELECTED_PLAYLIST_ID', payload: playlistId === 'all' ? null : playlistId });
+  };
+  
   // Effect to handle client-side values after hydration
   const [currentDate, setCurrentDate] = useState<Date | null>(null);
   useEffect(() => {
     setCurrentDate(new Date());
   }, []);
 
+  // Filter videos based on searchTerm (client-side for now)
+  // This is a simple example; more complex filtering might involve debouncing or server-side logic
+  const filteredVideos = state.videos.filter(video => 
+    video.title.toLowerCase().includes(searchTerm.toLowerCase())
+  );
+  // Note: if you want search to affect the VideoGrid directly, this state management needs to be in AppContext
 
   return (
     <Card className="p-4 sm:p-6 shadow-md rounded-lg">
@@ -82,22 +86,24 @@ export default function ControlsPanel() {
         <div className="space-y-1.5">
           <Label htmlFor="playlistFilter" className="text-sm font-medium">Filter by Playlist</Label>
           <Select
-            value={playlistFilter}
-            onValueChange={setPlaylistFilter}
+            value={state.selectedPlaylistId || 'all'}
+            onValueChange={handlePlaylistChange}
+            disabled={state.isLoadingPlaylists || state.playlists.length === 0}
           >
             <SelectTrigger id="playlistFilter" className="h-11">
               <ListFilter className="mr-2 h-4 w-4 text-muted-foreground" />
-              <SelectValue placeholder="Filter by playlist" />
+              <SelectValue placeholder={state.isLoadingPlaylists ? "Loading playlists..." : "Filter by playlist"} />
             </SelectTrigger>
             <SelectContent>
-              {playlists.map(p => <SelectItem key={p} value={p.toLowerCase().replace(' ', '-')}>{p}</SelectItem>)}
+              <SelectItem value="all">All Channel Videos</SelectItem>
+              {state.playlists.map(p => <SelectItem key={p.id} value={p.id}>{p.title} ({p.itemCount})</SelectItem>)}
             </SelectContent>
           </Select>
         </div>
 
-        {/* Date Range Filter */}
+        {/* Date Range Filter (UI only for now) */}
         <div className="space-y-1.5">
-            <Label htmlFor="dateRange" className="text-sm font-medium">Filter by Date</Label>
+            <Label htmlFor="dateRange" className="text-sm font-medium">Filter by Date (Uploaded)</Label>
             <Popover>
               <PopoverTrigger asChild>
                 <Button
@@ -120,26 +126,26 @@ export default function ControlsPanel() {
                 </Button>
               </PopoverTrigger>
               <PopoverContent className="w-auto p-0" align="start">
-                {currentDate && (
+                 {currentDate && (
                     <Calendar
                     initialFocus
                     mode="range"
-                    defaultMonth={currentDate}
+                    defaultMonth={currentDate} // Use a non-null date
                     selected={dateRange}
                     onSelect={setDateRange}
                     numberOfMonths={2}
                     />
-                )}
+                 )}
               </PopoverContent>
             </Popover>
           </div>
 
         {/* Bulk Selection Buttons */}
         <div className="md:col-span-2 lg:col-span-3 flex flex-col sm:flex-row gap-3 pt-2">
-          <Button onClick={handleSelectAll} variant="outline" className="flex-1 h-11 text-sm">
-            <CheckSquare className="mr-2 h-4 w-4" /> Select All
+          <Button onClick={handleSelectAll} variant="outline" className="flex-1 h-11 text-sm" disabled={filteredVideos.length === 0}>
+            <CheckSquare className="mr-2 h-4 w-4" /> Select All Visible
           </Button>
-          <Button onClick={handleDeselectAll} variant="outline" className="flex-1 h-11 text-sm">
+          <Button onClick={handleDeselectAll} variant="outline" className="flex-1 h-11 text-sm" disabled={state.selectedVideos.size === 0}>
             <XSquare className="mr-2 h-4 w-4" /> Deselect All
           </Button>
         </div>
@@ -147,10 +153,3 @@ export default function ControlsPanel() {
     </Card>
   );
 }
-
-// Dummy Card component to make it compile, assuming it's from shadcn/ui but not available in this context
-const Card = ({ className, children }: { className?: string; children: React.ReactNode }) => (
-  <div className={`bg-card text-card-foreground border rounded-lg ${className}`}>
-    {children}
-  </div>
-);

@@ -13,7 +13,7 @@ import {
 } from '@/components/ui/select';
 import { Badge } from '@/components/ui/badge';
 import { Card, CardContent, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
-import { Clock, Eye, Download, CalendarDays, ListVideo } from 'lucide-react';
+import { Eye, Download, CalendarDays, ListVideo } from 'lucide-react'; // Removed Clock, using CalendarDays
 import { useAppContext } from '@/store/app-context';
 import { cn } from '@/lib/utils';
 
@@ -35,20 +35,29 @@ export default function VideoCard({ video }: VideoCardProps) {
   };
 
   const handleDownloadSingle = () => {
-    dispatch({ type: 'ADD_TO_DOWNLOAD_QUEUE', payload: [video] });
+    // Ensure the video being downloaded has its quality set if not already specific
+    const videoToDownload = {
+      ...video,
+      selectedQuality: state.videoQualities[video.id] || state.globalQuality,
+    };
+    dispatch({ type: 'ADD_TO_DOWNLOAD_QUEUE', payload: [videoToDownload] });
   };
+  
+  const availableQualities = video.availableQualities?.length > 0 ? video.availableQualities : ['720p', '480p', '360p'];
+
 
   return (
     <Card className={cn("flex flex-col overflow-hidden shadow-lg hover:shadow-xl transition-shadow duration-300 rounded-lg", isSelected ? "ring-2 ring-primary" : "")}>
       <CardHeader className="p-0 relative">
         <Image
-          src={video.thumbnailUrl}
+          src={video.thumbnailUrl || `https://placehold.co/600x338.png?text=No+Thumbnail`}
           alt={video.title}
           width={600}
           height={338} // approx 16:9
           className="w-full h-auto object-cover aspect-video transition-opacity duration-300 opacity-0"
           onLoadingComplete={(image) => image.classList.remove('opacity-0')}
           data-ai-hint="video thumbnail"
+          unoptimized={video.thumbnailUrl?.includes('i.ytimg.com')} // Allow YouTube images
         />
         <Badge variant="secondary" className="absolute bottom-2 right-2 bg-black/70 text-white text-xs px-1.5 py-0.5 rounded">
           {video.duration}
@@ -64,7 +73,7 @@ export default function VideoCard({ video }: VideoCardProps) {
         </div>
       </CardHeader>
       <CardContent className="p-4 flex-grow">
-        <CardTitle className="text-base font-headline font-semibold leading-tight mb-2 h-12 overflow-hidden">
+        <CardTitle className="text-base font-headline font-semibold leading-tight mb-2 h-12 overflow-hidden" title={video.title}>
           {video.title.length > 60 ? video.title.substring(0, 57) + "..." : video.title}
         </CardTitle>
         <div className="text-xs text-muted-foreground space-y-1.5">
@@ -76,10 +85,10 @@ export default function VideoCard({ video }: VideoCardProps) {
             <Eye className="h-3.5 w-3.5" />
             <span>{video.viewCount}</span>
           </div>
-          {video.playlist && (
-            <div className="flex items-center gap-1.5">
+          {video.playlist && ( // Show if video is associated with a playlist (via filtering)
+            <div className="flex items-center gap-1.5" title={video.playlist}>
               <ListVideo className="h-3.5 w-3.5" />
-              <span>{video.playlist}</span>
+              <span className="truncate">{video.playlist.length > 25 ? video.playlist.substring(0,22) + "..." : video.playlist}</span>
             </div>
           )}
         </div>
@@ -90,10 +99,10 @@ export default function VideoCard({ video }: VideoCardProps) {
               <SelectValue placeholder="Quality" />
             </SelectTrigger>
             <SelectContent>
-              {video.availableQualities.map(q => (
+              {availableQualities.map(q => (
                 <SelectItem key={q} value={q} className="text-xs">{q}</SelectItem>
               ))}
-               {!video.availableQualities.includes(currentQuality) && (
+               {!availableQualities.includes(currentQuality) && ( // If global quality isn't in video's specific list
                 <SelectItem value={currentQuality} className="text-xs bg-muted">{currentQuality} (Global)</SelectItem>
               )}
             </SelectContent>

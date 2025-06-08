@@ -10,8 +10,18 @@ Based on the project structure and file names, the application likely includes:
 - **Download Functionality:** The presence of `src/components/download-panel.tsx` strongly indicates features related to downloading videos.
 - **User Interface:** Built with Next.js, React, and styled with Tailwind CSS and shadcn/ui components.
 - **State Management:** Utilizing React Context API (`src/store/app-context.tsx`).
-- **AI Integration:** Files in the `src/ai` directory point towards integration with AI models, possibly via Genkit.
+- **AI Integration:** Files in the `/src/ai` directory point towards integration with AI models, possibly via Genkit.
 - **Utility Functions:** Common helper functions in `src/lib/utils.ts`.
+
+## Prerequisites
+
+Before you begin, ensure you have the following installed:
+
+- Git
+- Node.js (LTS version recommended)
+- npm or yarn
+- Node.js (LTS version recommended)
+- npm or yarn
 
 ## Technologies Used
 
@@ -22,10 +32,14 @@ Based on the project structure and file names, the application likely includes:
 - **shadcn/ui:** UI component library built with Radix UI and Tailwind CSS.
 - **Genkit:** (Likely) Framework for building AI applications.
 - **Vercel App Hosting:** (Indicated by `apphosting.yaml`) Potential deployment target.
+- **Netlify:** Potential deployment target.
 
 ## Installation
 
 To set up and run the project locally, follow these steps:
+
+1.  **Clone the repository:**
+
 
 1.  **Clone the repository:**
 
