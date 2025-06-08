@@ -13,8 +13,6 @@ interface AppState {
   downloadQueue: DownloadItem[];
   isLoadingVideos: boolean;
   channelName: string;
-  suggestedPath: string;
-  suggestedPathInstructions: string;
 }
 
 type Action =
@@ -31,8 +29,7 @@ type Action =
   | { type: 'SET_DOWNLOAD_ITEM_STATUS'; payload: { videoId: string; status: DownloadItem['status'] } }
   | { type: 'REMOVE_FROM_DOWNLOAD_QUEUE'; payload: string } // videoId
   | { type: 'CLEAR_COMPLETED_DOWNLOADS' }
-  | { type: 'SET_CHANNEL_NAME'; payload: string }
-  | { type: 'SET_SUGGESTED_PATH'; payload: { path: string; instructions: string } };
+  | { type: 'SET_CHANNEL_NAME'; payload: string };
 
 
 const initialState: AppState = {
@@ -43,14 +40,12 @@ const initialState: AppState = {
   settings: {
     apiKey: '',
     defaultQuality: '720p',
-    downloadPathPreference: 'On My iPad/OfflineTube',
+    downloadPathPreference: 'On My iPad/OfflineTube', // This might be removed if optimizer is fully gone
     concurrentDownloads: 2,
   },
   downloadQueue: [],
   isLoadingVideos: true,
-  channelName: 'Demo Channel',
-  suggestedPath: '',
-  suggestedPathInstructions: '',
+  channelName: 'RamayanaForUs',
 };
 
 const MOCK_VIDEOS: Video[] = Array.from({ length: 12 }, (_, i) => ({
@@ -60,7 +55,7 @@ const MOCK_VIDEOS: Video[] = Array.from({ length: 12 }, (_, i) => ({
   duration: `${Math.floor(Math.random() * 30) + 1}:${String(Math.floor(Math.random() * 60)).padStart(2, '0')}`,
   uploadDate: `2023-0${Math.floor(Math.random() * 9) + 1}-${String(Math.floor(Math.random() * 28) + 1).padStart(2, '0')}`,
   viewCount: `${(Math.random() * 5 + 0.1).toFixed(1)}M views`,
-  channelName: 'Demo Channel',
+  channelName: 'RamayanaForUs',
   availableQualities: ['480p', '720p', '1080p', '1440p'].slice(0, Math.floor(Math.random() * 3) + 2),
   description: `This is a sample description for video ${i + 1}. It could contain details about the video content, creators, and other relevant information.`,
 }));
@@ -144,8 +139,6 @@ function appReducer(state: AppState, action: Action): AppState {
         };
     case 'SET_CHANNEL_NAME':
         return { ...state, channelName: action.payload };
-    case 'SET_SUGGESTED_PATH':
-        return { ...state, suggestedPath: action.payload.path, suggestedPathInstructions: action.payload.instructions };
     default:
       return state;
   }

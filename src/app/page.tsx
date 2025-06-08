@@ -5,7 +5,6 @@ import Header from '@/components/header';
 import ControlsPanel from '@/components/controls-panel';
 import VideoGrid from '@/components/video-grid';
 import DownloadPanel from '@/components/download-panel';
-import DownloadPathOptimizer from '@/components/download-path-optimizer';
 import { Separator } from '@/components/ui/separator';
 
 function OfflineTubePage() {
@@ -20,12 +19,10 @@ function OfflineTubePage() {
             <VideoGrid />
           </div>
 
-          {/* Sidebar area for downloads and optimizer */}
+          {/* Sidebar area for downloads */}
           <aside className="lg:col-span-4 xl:col-span-3 space-y-6 lg:sticky lg:top-[calc(theme(spacing.16)_+_1px)] lg:max-h-[calc(100vh_-_theme(spacing.16)_-_theme(spacing.12))] lg:overflow-y-auto pb-6">
              {/* The sticky top value needs to match header height + some padding */}
             <DownloadPanel />
-            <Separator className="my-6" />
-            <DownloadPathOptimizer />
           </aside>
         </div>
       </main>
