@@ -1,16 +1,16 @@
 
-import type { Video, YouTubePlaylist } from '@/types';
+import type { Video, YouTubePlaylist, VideoPage } from '@/types';
 import { formatDistanceToNowStrict, parseISO } from 'date-fns';
 
 const YOUTUBE_API_BASE_URL = 'https://www.googleapis.com/youtube/v3';
+const VIDEOS_PER_PAGE = 50; // Max allowed by YouTube API for playlistItems is 50
 
-// Helper to format ISO duration (PT1M30S) to "1:30"
-// This function now assumes isoDuration is a valid string if called.
-function formatYouTubeDuration(isoDuration: string): string {
+function formatYouTubeDuration(isoDuration: string | undefined): string {
+  if (!isoDuration) return "N/A";
+  if (isoDuration === 'P0D') return "LIVE"; // Often used for live streams by API before actual duration
+
   const match = isoDuration.match(/PT(?:(\d+)H)?(?:(\d+)M)?(?:(\d+)S)?/);
-  // isoDuration should always be valid if this function is called, 
-  // based on the logic in fetchPlaylistItems. Fallback just in case.
-  if (!match) return "0:00"; 
+  if (!match) return "N/A";
 
   const hours = parseInt(match[1] || '0');
   const minutes = parseInt(match[2] || '0');
@@ -27,7 +27,6 @@ function formatYouTubeDuration(isoDuration: string): string {
   return formatted;
 }
 
-// Helper to format view count
 function formatViewCount(viewCountStr: string | undefined): string {
   if (!viewCountStr) return "N/A views";
   const views = parseInt(viewCountStr);
@@ -38,7 +37,6 @@ function formatViewCount(viewCountStr: string | undefined): string {
   return views + ' views';
 }
 
-// Helper to format upload date
 function formatUploadDate(dateString: string | undefined): string {
   if (!dateString) return "Unknown date";
   try {
@@ -49,27 +47,24 @@ function formatUploadDate(dateString: string | undefined): string {
   }
 }
 
-
 export function extractChannelHandle(channelUrl: string): string | null {
   try {
     const url = new URL(channelUrl);
     const pathParts = url.pathname.split('/').filter(Boolean);
     if (pathParts.length > 0 && pathParts[0].startsWith('@')) {
-      return pathParts[0]; // Returns "@YourChannel"
+      return pathParts[0];
     }
-    // Fallback for older /channel/UC... or /user/username URLs if needed
     if (pathParts[0] === 'channel' && pathParts[1]) {
-        return pathParts[1]; // Returns UC... string
+        return pathParts[1];
     }
     if (pathParts[0] === 'user' && pathParts[1]) {
-        return pathParts[1]; // Returns username
+        return pathParts[1];
     }
   } catch (error) {
     console.error("Invalid channel URL:", channelUrl, error);
   }
   return null;
 }
-
 
 export async function fetchChannelDetails(apiKey: string, channelHandleOrId: string): Promise<{ id: string; uploadsPlaylistId: string; title: string } | null> {
   let endpoint = `${YOUTUBE_API_BASE_URL}/channels?part=snippet,contentDetails&key=${apiKey}`;
@@ -78,10 +73,9 @@ export async function fetchChannelDetails(apiKey: string, channelHandleOrId: str
   } else if (channelHandleOrId.startsWith('UC')) {
     endpoint += `&id=${channelHandleOrId}`;
   } else {
-     // Assume it's a legacy username if not starting with @ or UC
     endpoint += `&forUsername=${channelHandleOrId}`;
   }
-  
+
   try {
     const response = await fetch(endpoint);
     if (!response.ok) {
@@ -125,13 +119,15 @@ export async function fetchChannelPlaylists(apiKey: string, channelId: string): 
     }));
   } catch (error) {
     console.error('Error fetching channel playlists:', error);
-    throw error; // Re-throw to be caught by caller
+    throw error;
   }
 }
 
-
-export async function fetchPlaylistItems(apiKey: string, playlistId: string, maxResults: number = 20): Promise<Video[]> {
-  const playlistItemsEndpoint = `${YOUTUBE_API_BASE_URL}/playlistItems?part=snippet,contentDetails&playlistId=${playlistId}&maxResults=${maxResults}&key=${apiKey}`;
+export async function fetchPlaylistItems(apiKey: string, playlistId: string, pageToken?: string): Promise<VideoPage> {
+  let playlistItemsEndpoint = `${YOUTUBE_API_BASE_URL}/playlistItems?part=snippet,contentDetails&playlistId=${playlistId}&maxResults=${VIDEOS_PER_PAGE}&key=${apiKey}`;
+  if (pageToken) {
+    playlistItemsEndpoint += `&pageToken=${pageToken}`;
+  }
   try {
     const response = await fetch(playlistItemsEndpoint);
     if (!response.ok) {
@@ -140,13 +136,13 @@ export async function fetchPlaylistItems(apiKey: string, playlistId: string, max
       throw new Error(errorData.error?.message || `Failed to fetch playlist items, status: ${response.status}`);
     }
     const data = await response.json();
-    
+
     const videoIds = data.items
         .map((item: any) => item.contentDetails?.videoId)
-        .filter(Boolean) // Filter out items that might not be videos (e.g., deleted videos)
+        .filter(Boolean)
         .join(',');
 
-    if (!videoIds) return [];
+    if (!videoIds) return { videos: [], nextPageToken: data.nextPageToken, prevPageToken: data.prevPageToken, totalResults: data.pageInfo?.totalResults, resultsPerPage: data.pageInfo?.resultsPerPage };
 
     const videosEndpoint = `${YOUTUBE_API_BASE_URL}/videos?part=snippet,contentDetails,statistics&id=${videoIds}&key=${apiKey}`;
     const videosResponse = await fetch(videosEndpoint);
@@ -167,15 +163,16 @@ export async function fetchPlaylistItems(apiKey: string, playlistId: string, max
         return acc;
     }, {});
 
-
-    return videosData.items.map((video: any) => {
+    const videos: Video[] = videosData.items.map((video: any) => {
       let durationStr: string;
-      if (video.snippet?.liveBroadcastContent === 'live') {
+      if (video.snippet?.liveBroadcastContent === 'live' || video.contentDetails?.duration === 'P0D') {
         durationStr = 'LIVE';
-      } else if (video.contentDetails?.duration && video.contentDetails.duration !== 'PT0S') {
+      } else if (video.contentDetails?.duration && video.contentDetails.duration !== 'PT0S' && video.snippet?.liveBroadcastContent !== 'upcoming') {
         durationStr = formatYouTubeDuration(video.contentDetails.duration);
-      } else if (video.contentDetails?.duration === 'PT0S' && video.snippet?.liveBroadcastContent === 'upcoming') {
-        durationStr = 'Upcoming'; // Or 'Premiere'
+      } else if (video.snippet?.liveBroadcastContent === 'upcoming') {
+        durationStr = 'Upcoming';
+      } else if (video.contentDetails?.duration === 'PT0S') { // For very short videos or if API returns PT0S incorrectly
+        durationStr = '0:00';
       }
       else {
         durationStr = 'N/A';
@@ -190,11 +187,20 @@ export async function fetchPlaylistItems(apiKey: string, playlistId: string, max
         viewCount: formatViewCount(video.statistics?.viewCount),
         channelName: video.snippet?.channelTitle || "Unknown Channel",
         description: video.snippet?.description,
-        availableQualities: ['1080p', '720p', '480p', '360p'], // Mocked
-        publishedAt: video.snippet?.publishedAt, // Raw ISO date
+        availableQualities: ['1080p', '720p', '480p', '360p'],
+        publishedAt: video.snippet?.publishedAt,
         playlistId: playlistItemDetails[video.id]?.playlistId,
       };
     });
+
+    return {
+        videos,
+        nextPageToken: data.nextPageToken,
+        prevPageToken: data.prevPageToken,
+        totalResults: data.pageInfo?.totalResults,
+        resultsPerPage: data.pageInfo?.resultsPerPage
+    };
+
   } catch (error) {
     console.error(`Error fetching items for playlist ${playlistId}:`, error);
     throw error;
