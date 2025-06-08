@@ -34,13 +34,4 @@ Before you begin, ensure you have the following installed:
 - **Vercel App Hosting:** (Indicated by `apphosting.yaml`) Potential deployment target.
 - **Netlify:** Potential deployment target.
 
-## Installation
-
-To set up and run the project locally, follow these steps:
-
-1.  **Clone the repository:**
-
-
-1.  **Clone the repository:**
-
 
