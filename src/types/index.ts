@@ -1,3 +1,4 @@
+
 export interface Video {
   id: string;
   title: string;
@@ -15,24 +16,25 @@ export interface Video {
 
 export interface DownloadItem extends Video {
   selectedQuality: string;
-  progress: number; // 0-100. For server downloads, this might represent stages or be simulated.
+  progress: number; 
   status: 
-    | 'queued'                // Initial state in client before API call
-    | 'initiating_server_download' // Client called API, waiting for server response
-    | 'server_downloading'    // Server confirmed yt-dlp started (or frontend simulates this)
-    | 'server_download_ready' // Server downloaded file, downloadUrl is available
-    | 'error'                 // Error occurred on client or server side
-    | 'paused'                // Paused by user (future feature for server downloads)
-    | 'completed';            // For client-side simulation, or if server confirms download AND client saves it.
-  downloadUrl?: string;       // URL to download the file from the server (e.g., /downloads/videos/file.mp4)
-  errorMessage?: string;      // Optional error message
+    | 'queued'                
+    | 'initiating_server_download' 
+    | 'server_downloading'    
+    | 'server_download_ready' 
+    | 'error'                 
+    | 'paused'                
+    | 'completed';            
+  downloadUrl?: string;       
+  filename?: string; // Added filename, will be provided by server
+  errorMessage?: string;      
 }
 
 export interface AppSettings {
-  apiKey: string;
-  channelUrl: string; 
-  defaultQuality: string;
-  downloadPathPreference: string; // This will now likely refer to a server path if used by backend
+  // apiKey: string; // Removed, will use env var
+  // channelUrl: string; // Removed, will use env var
+  defaultQuality: string; // Will be '480p' by default
+  downloadPathPreference: string; 
   concurrentDownloads: number;
 }
 
@@ -44,3 +46,4 @@ export interface YouTubePlaylist {
   itemCount?: number;
   publishedAt?: string;
 }
+

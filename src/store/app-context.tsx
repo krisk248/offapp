@@ -1,4 +1,5 @@
 
+
 "use client";
 
 import type { Video, DownloadItem, AppSettings, YouTubePlaylist } from '@/types';
@@ -6,7 +7,6 @@ import React, { createContext, useContext, useReducer, ReactNode, Dispatch, useE
 import { useToast } from '@/hooks/use-toast';
 import { extractChannelHandle, fetchChannelDetails, fetchChannelPlaylists, fetchPlaylistItems } from '@/lib/youtube';
 
-// --- State & Actions ---
 interface AppState {
   videos: Video[];
   playlists: YouTubePlaylist[];
@@ -14,13 +14,16 @@ interface AppState {
   selectedVideos: Set<string>;
   globalQuality: string;
   videoQualities: Record<string, string>; 
-  settings: AppSettings;
+  settings: AppSettings; // Simplified settings
   downloadQueue: DownloadItem[];
   isLoadingVideos: boolean;
   isLoadingPlaylists: boolean;
   channelName: string; 
   channelId: string | null; 
   uploadsPlaylistId: string | null; 
+  envVarsLoaded: boolean; // To track if env vars have been processed
+  apiKey?: string; // Loaded from env
+  channelUrl?: string; // Loaded from env
 }
 
 type Action =
@@ -34,39 +37,38 @@ type Action =
   | { type: 'DESELECT_ALL_VIDEOS' }
   | { type: 'SET_GLOBAL_QUALITY'; payload: string }
   | { type: 'SET_VIDEO_QUALITY'; payload: { videoId: string; quality: string } }
-  | { type: 'UPDATE_SETTINGS'; payload: Partial<AppSettings> }
+  // | { type: 'UPDATE_SETTINGS'; payload: Partial<AppSettings> } // Simplified/removed if no UI settings
+  | { type: 'SET_ENV_CONFIG'; payload: { apiKey?: string, channelUrl?: string } }
   | { type: 'SET_CHANNEL_INFO'; payload: { id: string | null; uploadsPlaylistId: string | null; title: string } }
-  | { type: 'ADD_TO_DOWNLOAD_QUEUE'; payload: Video[] } // Videos to be processed for download
+  | { type: 'ADD_TO_DOWNLOAD_QUEUE'; payload: Video[] }
   | { type: 'INITIATE_SERVER_DOWNLOAD_SUCCESS'; payload: { videoId: string; downloadUrl: string; filename: string } }
   | { type: 'INITIATE_SERVER_DOWNLOAD_FAILURE'; payload: { videoId: string; error: string } }
-  | { type: 'UPDATE_DOWNLOAD_PROGRESS'; payload: { videoId: string; progress: number } } // For client-side simulation or future server push
-  | { type: 'SET_DOWNLOAD_ITEM_STATUS'; payload: { videoId: string; status: DownloadItem['status']; errorMessage?: string; downloadUrl?: string } }
+  | { type: 'UPDATE_DOWNLOAD_PROGRESS'; payload: { videoId: string; progress: number } }
+  | { type: 'SET_DOWNLOAD_ITEM_STATUS'; payload: { videoId: string; status: DownloadItem['status']; errorMessage?: string; downloadUrl?: string; filename?: string} }
   | { type: 'REMOVE_FROM_DOWNLOAD_QUEUE'; payload: string } 
   | { type: 'CLEAR_COMPLETED_DOWNLOADS' };
-
 
 const initialState: AppState = {
   videos: [],
   playlists: [],
   selectedPlaylistId: null, 
   selectedVideos: new Set(),
-  globalQuality: '720p',
+  globalQuality: '480p', // Default to 480p
   videoQualities: {},
   settings: {
-    apiKey: '',
-    channelUrl: '', 
-    defaultQuality: '720p',
-    downloadPathPreference: '/Downloads/OfflineTube', // Potentially for server path
-    concurrentDownloads: 2, // How many downloads the frontend will *initiate* concurrently
+    defaultQuality: '480p', // Default quality setting
+    downloadPathPreference: '/Downloads/OfflineTube', 
+    concurrentDownloads: 2, 
   },
   downloadQueue: [],
   isLoadingVideos: false, 
   isLoadingPlaylists: false,
-  channelName: 'OfflineTube', 
+  channelName: 'Dushyath Youtube Downloader', 
   channelId: null,
   uploadsPlaylistId: null,
+  envVarsLoaded: false,
+  // apiKey and channelUrl will be loaded from process.env
 };
-
 
 function appReducer(state: AppState, action: Action): AppState {
   switch (action.type) {
@@ -96,6 +98,7 @@ function appReducer(state: AppState, action: Action): AppState {
     case 'DESELECT_ALL_VIDEOS':
       return { ...state, selectedVideos: new Set() };
     case 'SET_GLOBAL_QUALITY':
+      // Ensure settings.defaultQuality is also updated if globalQuality is the source of truth for it
       return { ...state, globalQuality: action.payload, settings: {...state.settings, defaultQuality: action.payload} };
     case 'SET_VIDEO_QUALITY':
       return {
@@ -105,18 +108,20 @@ function appReducer(state: AppState, action: Action): AppState {
           [action.payload.videoId]: action.payload.quality,
         },
       };
-    case 'UPDATE_SETTINGS':
-      console.log('[App Context] Updating settings:', action.payload);
+    case 'SET_ENV_CONFIG':
+      console.log('[App Context] ENV Config loaded:', {apiKeyExists: !!action.payload.apiKey, channelUrlExists: !!action.payload.channelUrl});
       return {
         ...state,
-        settings: { ...state.settings, ...action.payload },
-        globalQuality: action.payload.defaultQuality ?? state.globalQuality,
-        channelId: action.payload.channelUrl !== state.settings.channelUrl ? null : state.channelId,
-        uploadsPlaylistId: action.payload.channelUrl !== state.settings.channelUrl ? null : state.uploadsPlaylistId,
-        channelName: action.payload.channelUrl !== state.settings.channelUrl ? 'OfflineTube' : state.channelName,
-        videos: action.payload.channelUrl !== state.settings.channelUrl ? [] : state.videos,
-        playlists: action.payload.channelUrl !== state.settings.channelUrl ? [] : state.playlists,
-        selectedPlaylistId: action.payload.channelUrl !== state.settings.channelUrl ? null : state.selectedPlaylistId,
+        apiKey: action.payload.apiKey,
+        channelUrl: action.payload.channelUrl,
+        envVarsLoaded: true,
+        // Reset channel specific data if URL changed (though env vars change less often)
+        channelId: null,
+        uploadsPlaylistId: null,
+        channelName: 'Dushyath Youtube Downloader',
+        videos: [],
+        playlists: [],
+        selectedPlaylistId: null,
       };
     case 'SET_CHANNEL_INFO':
       console.log('[App Context] Channel info set:', action.payload);
@@ -133,7 +138,7 @@ function appReducer(state: AppState, action: Action): AppState {
           ...video,
           selectedQuality: state.videoQualities[video.id] || state.globalQuality,
           progress: 0,
-          status: 'queued', // Initial status before API call
+          status: 'queued', 
         }));
       if (newItems.length > 0) {
         console.log(`[App Context Download Queue] Added ${newItems.length} items to client queue:`, newItems.map(i => i.title));
@@ -141,12 +146,12 @@ function appReducer(state: AppState, action: Action): AppState {
       return { ...state, downloadQueue: [...state.downloadQueue, ...newItems] };
     }
     case 'INITIATE_SERVER_DOWNLOAD_SUCCESS': {
-      console.log(`[App Context] Server download initiated for ${action.payload.videoId}. URL: ${action.payload.downloadUrl}`);
+      console.log(`[App Context] Server download initiated for ${action.payload.videoId}. URL: ${action.payload.downloadUrl}, Filename: ${action.payload.filename}`);
       return {
         ...state,
         downloadQueue: state.downloadQueue.map(item =>
           item.id === action.payload.videoId
-            ? { ...item, status: 'server_download_ready', downloadUrl: action.payload.downloadUrl, progress: 100 } // Mark as ready
+            ? { ...item, status: 'server_download_ready', downloadUrl: action.payload.downloadUrl, filename: action.payload.filename, progress: 100 } 
             : item
         ),
       };
@@ -162,21 +167,19 @@ function appReducer(state: AppState, action: Action): AppState {
         ),
       };
     }
-    case 'UPDATE_DOWNLOAD_PROGRESS': { // Primarily for client-side simulation if needed, or future server push
+    case 'UPDATE_DOWNLOAD_PROGRESS': { 
       const { videoId, progress } = action.payload;
-      // This might be used if we want to simulate server progress on client
-      // For now, API call success implies server is handling it.
       return {
         ...state,
         downloadQueue: state.downloadQueue.map(item =>
-          item.id === videoId && item.status === 'server_downloading' // Only update if in this specific state
+          item.id === videoId && item.status === 'server_downloading' 
             ? { ...item, progress }
             : item
         ),
       };
     }
     case 'SET_DOWNLOAD_ITEM_STATUS': {
-      const { videoId, status, errorMessage, downloadUrl } = action.payload;
+      const { videoId, status, errorMessage, downloadUrl, filename } = action.payload;
       const item = state.downloadQueue.find(i => i.id === videoId);
       if(item) {
         console.log(`[App Context Download Status] Video: "${item.title}" (${videoId}), Status changed to: ${status}`);
@@ -185,7 +188,7 @@ function appReducer(state: AppState, action: Action): AppState {
         ...state,
         downloadQueue: state.downloadQueue.map(item =>
           item.id === videoId
-            ? { ...item, status: status, errorMessage: errorMessage, downloadUrl: downloadUrl ?? item.downloadUrl, progress: status === 'server_download_ready' ? 100 : status === 'error' ? 0 : item.progress }
+            ? { ...item, status: status, errorMessage: errorMessage, downloadUrl: downloadUrl ?? item.downloadUrl, filename: filename ?? item.filename, progress: status === 'server_download_ready' ? 100 : status === 'error' ? 0 : item.progress }
             : item
         ),
       };
@@ -201,14 +204,13 @@ function appReducer(state: AppState, action: Action): AppState {
         };
     }
     case 'CLEAR_COMPLETED_DOWNLOADS': {
-        // "completed" might mean server_download_ready and user has clicked link, or just server_download_ready
-        const completedCount = state.downloadQueue.filter(item => item.status === 'server_download_ready' || item.status === 'completed').length;
+        const completedCount = state.downloadQueue.filter(item => item.status === 'server_download_ready' || item.status === 'completed' || item.status === 'error').length;
         if (completedCount > 0) {
-            console.log(`[App Context Download Queue] Cleared ${completedCount} items considered completed/ready.`);
+            console.log(`[App Context Download Queue] Cleared ${completedCount} items considered finished/failed.`);
         }
         return {
             ...state,
-            downloadQueue: state.downloadQueue.filter(item => item.status !== 'server_download_ready' && item.status !== 'completed')
+            downloadQueue: state.downloadQueue.filter(item => item.status !== 'server_download_ready' && item.status !== 'completed' && item.status !== 'error')
         };
     }
     default:
@@ -216,7 +218,6 @@ function appReducer(state: AppState, action: Action): AppState {
   }
 }
 
-// --- Context ---
 interface AppContextType {
   state: AppState;
   dispatch: Dispatch<Action>;
@@ -225,38 +226,48 @@ interface AppContextType {
 
 const AppContext = createContext<AppContextType | undefined>(undefined);
 
-// --- Provider ---
 export function AppProvider({ children }: { children: ReactNode }) {
   const [state, dispatch] = useReducer(appReducer, initialState);
   const { toast } = useToast();
 
+  useEffect(() => {
+    // Load API Key and Channel URL from .env file (client-side)
+    const apiKey = process.env.NEXT_PUBLIC_YOUTUBE_API_KEY;
+    const channelUrl = process.env.NEXT_PUBLIC_YOUTUBE_CHANNEL_URL;
+    dispatch({ type: 'SET_ENV_CONFIG', payload: { apiKey, channelUrl } });
+  }, []);
+
+
   const fetchAndSetChannelData = useCallback(async () => {
-    if (!state.settings.apiKey || !state.settings.channelUrl) {
-      dispatch({ type: 'SET_CHANNEL_INFO', payload: { id: null, uploadsPlaylistId: null, title: 'OfflineTube' } });
+    if (!state.apiKey || !state.channelUrl) {
+      if(state.envVarsLoaded){ // Only show toast if env vars were attempted to be loaded
+         // Toast is handled by VideoGrid now
+      }
+      dispatch({ type: 'SET_CHANNEL_INFO', payload: { id: null, uploadsPlaylistId: null, title: 'Dushyath Youtube Downloader' } });
       dispatch({ type: 'SET_PLAYLISTS', payload: [] });
       dispatch({ type: 'SET_VIDEOS', payload: [] });
       return;
     }
 
-    const channelHandleOrId = extractChannelHandle(state.settings.channelUrl);
+    const channelHandleOrId = extractChannelHandle(state.channelUrl);
     if (!channelHandleOrId) {
-      toast({ title: 'Invalid Channel URL', description: 'Could not parse channel ID or handle from URL.', variant: 'destructive' });
-      dispatch({ type: 'SET_CHANNEL_INFO', payload: { id: null, uploadsPlaylistId: null, title: 'OfflineTube' } });
+      toast({ title: 'Invalid Channel URL', description: 'Could not parse channel ID or handle from URL in .env file.', variant: 'destructive' });
+      dispatch({ type: 'SET_CHANNEL_INFO', payload: { id: null, uploadsPlaylistId: null, title: 'Dushyath Youtube Downloader' } });
       return;
     }
     
-    if (!state.channelId || !state.uploadsPlaylistId || state.settings.channelUrl !== localStorage.getItem('prevChannelUrl')) {
-        localStorage.setItem('prevChannelUrl', state.settings.channelUrl); 
+    // Fetch only if channelId is not set, or if env vars have been freshly loaded and might indicate a change.
+    if (!state.channelId || !state.uploadsPlaylistId) {
         dispatch({ type: 'SET_LOADING_PLAYLISTS', payload: true }); 
         dispatch({ type: 'SET_LOADING_VIDEOS', payload: true });
         console.log(`[App Context] Fetching channel details for: ${channelHandleOrId}`);
         try {
-            const channelInfo = await fetchChannelDetails(state.settings.apiKey, channelHandleOrId);
+            const channelInfo = await fetchChannelDetails(state.apiKey, channelHandleOrId);
             if (channelInfo) {
                 dispatch({ type: 'SET_CHANNEL_INFO', payload: channelInfo });
             } else {
-                toast({ title: 'Channel Not Found', description: 'Could not fetch channel details.', variant: 'destructive' });
-                dispatch({ type: 'SET_CHANNEL_INFO', payload: { id: null, uploadsPlaylistId: null, title: 'OfflineTube' } });
+                toast({ title: 'Channel Not Found', description: 'Could not fetch channel details with provided API Key and Channel URL.', variant: 'destructive' });
+                dispatch({ type: 'SET_CHANNEL_INFO', payload: { id: null, uploadsPlaylistId: null, title: 'Dushyath Youtube Downloader' } });
                 dispatch({ type: 'SET_LOADING_PLAYLISTS', payload: false });
                 dispatch({ type: 'SET_LOADING_VIDEOS', payload: false });
             }
@@ -267,22 +278,23 @@ export function AppProvider({ children }: { children: ReactNode }) {
             dispatch({ type: 'SET_LOADING_VIDEOS', payload: false });
         }
     }
-  }, [state.settings.apiKey, state.settings.channelUrl, state.channelId, state.uploadsPlaylistId, toast]);
+  }, [state.apiKey, state.channelUrl, state.channelId, state.uploadsPlaylistId, state.envVarsLoaded, toast]);
 
 
   useEffect(() => {
-    fetchAndSetChannelData();
-  }, [fetchAndSetChannelData]);
+    if(state.envVarsLoaded) { // Ensure env vars are loaded before trying to fetch channel data
+        fetchAndSetChannelData();
+    }
+  }, [state.envVarsLoaded, fetchAndSetChannelData]);
 
 
   useEffect(() => {
     const fetchPlaylists = async () => {
-      if (state.settings.apiKey && state.channelId && (state.playlists.length === 0 || state.settings.channelUrl !== localStorage.getItem('prevPlaylistsChannelUrl'))) { 
-        localStorage.setItem('prevPlaylistsChannelUrl', state.settings.channelUrl);
+      if (state.apiKey && state.channelId && (state.playlists.length === 0 || !state.selectedPlaylistId)) { 
         dispatch({ type: 'SET_LOADING_PLAYLISTS', payload: true });
         console.log(`[App Context] Fetching playlists for channel ID: ${state.channelId}`);
         try {
-          const playlistsData = await fetchChannelPlaylists(state.settings.apiKey, state.channelId);
+          const playlistsData = await fetchChannelPlaylists(state.apiKey, state.channelId);
           dispatch({ type: 'SET_PLAYLISTS', payload: playlistsData });
         } catch (error: any) {
           toast({ title: 'API Error (Playlists)', description: error.message || 'Failed to fetch playlists.', variant: 'destructive' });
@@ -291,29 +303,20 @@ export function AppProvider({ children }: { children: ReactNode }) {
         }
       }
     };
-    if(state.channelId) fetchPlaylists();
-  }, [state.settings.apiKey, state.channelId, state.playlists.length, state.settings.channelUrl, toast]);
+    if(state.channelId && state.apiKey) fetchPlaylists();
+  }, [state.apiKey, state.channelId, state.playlists.length, state.selectedPlaylistId, toast]);
 
 
   useEffect(() => {
     const fetchVideos = async () => {
-      if (state.settings.apiKey && (state.uploadsPlaylistId || state.selectedPlaylistId)) {
+      if (state.apiKey && (state.uploadsPlaylistId || state.selectedPlaylistId)) {
         const playlistToFetch = state.selectedPlaylistId || state.uploadsPlaylistId;
         if (!playlistToFetch) return;
-
-        const currentPlaylistKey = playlistToFetch;
-        const previousPlaylistKey = localStorage.getItem('currentVideosPlaylistKey');
-
-        if (state.videos.length > 0 && currentPlaylistKey === previousPlaylistKey && !state.isLoadingVideos) {
-            return;
-        }
-        localStorage.setItem('currentVideosPlaylistKey', currentPlaylistKey);
-
 
         dispatch({ type: 'SET_LOADING_VIDEOS', payload: true });
         console.log(`[App Context] Fetching videos for playlist ID: ${playlistToFetch}`);
         try {
-          const videosData = await fetchPlaylistItems(state.settings.apiKey, playlistToFetch, 50); 
+          const videosData = await fetchPlaylistItems(state.apiKey, playlistToFetch, 50); 
           const currentPlaylist = state.playlists.find(p => p.id === playlistToFetch);
           
           const videosWithPlaylistContext = videosData.map(v => ({
@@ -328,13 +331,14 @@ export function AppProvider({ children }: { children: ReactNode }) {
           console.error('[App Context] API Error (Videos):', error);
           dispatch({ type: 'SET_LOADING_VIDEOS', payload: false });
         }
-      } else if (!state.settings.apiKey || !state.settings.channelUrl) {
+      } else if (state.envVarsLoaded && (!state.apiKey || !state.channelUrl)) {
           dispatch({ type: 'SET_VIDEOS', payload: [] });
-          localStorage.removeItem('currentVideosPlaylistKey');
       }
     };
-    if(state.uploadsPlaylistId || state.selectedPlaylistId) fetchVideos();
-  }, [state.settings.apiKey, state.settings.channelUrl, state.uploadsPlaylistId, state.selectedPlaylistId, state.playlists, toast, state.videos.length, state.isLoadingVideos ]);
+    if (state.envVarsLoaded && state.apiKey && (state.uploadsPlaylistId || state.selectedPlaylistId)) {
+        fetchVideos();
+    }
+  }, [state.apiKey, state.channelUrl, state.uploadsPlaylistId, state.selectedPlaylistId, state.playlists, toast, state.envVarsLoaded]);
 
   const initiateServerDownload = useCallback(async (video: DownloadItem) => {
     if (!video || video.status === 'server_downloading' || video.status === 'server_download_ready') {
@@ -359,7 +363,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
       const result = await response.json();
 
       if (response.ok && result.success) {
-        toast({ title: 'Download Started', description: `${video.title} is being downloaded by the server.` });
+        toast({ title: 'Download Request Sent', description: `${video.title} is being prepared by the server.` });
+        // The API now includes filename
         dispatch({ type: 'INITIATE_SERVER_DOWNLOAD_SUCCESS', payload: { videoId: video.id, downloadUrl: result.downloadUrl, filename: result.filename } });
       } else {
         console.error(`[App Context] API call to /start-download failed for ${video.id}:`, result.message);
@@ -374,7 +379,6 @@ export function AppProvider({ children }: { children: ReactNode }) {
   }, [toast, dispatch]);
 
 
-  // Effect to process 'queued' items
   useEffect(() => {
     const queuedItems = state.downloadQueue.filter(item => item.status === 'queued');
     const currentlyDownloadingCount = state.downloadQueue.filter(
@@ -398,7 +402,6 @@ export function AppProvider({ children }: { children: ReactNode }) {
   );
 }
 
-// --- Hook ---
 export function useAppContext() {
   const context = useContext(AppContext);
   if (context === undefined) {
@@ -406,3 +409,4 @@ export function useAppContext() {
   }
   return context;
 }
+

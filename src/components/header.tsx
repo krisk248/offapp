@@ -1,15 +1,15 @@
+
 "use client";
 
-import { Youtube, Settings, DownloadCloud, CheckCircle, Archive } from 'lucide-react';
+import { Youtube, DownloadCloud, Archive } from 'lucide-react'; // Removed Settings
 import { Button } from '@/components/ui/button';
 import { useAppContext } from '@/store/app-context';
-import SettingsDialog from './settings-dialog';
-import { useState } from 'react';
+// SettingsDialog import removed
 import Link from 'next/link';
 
 export default function Header() {
   const { state, dispatch } = useAppContext();
-  const [isSettingsOpen, setIsSettingsOpen] = useState(false);
+  // isSettingsOpen state removed
 
   const selectedCount = state.selectedVideos.size;
   const videosToDownload = state.videos.filter(v => state.selectedVideos.has(v.id));
@@ -17,7 +17,6 @@ export default function Header() {
   const handleDownloadAllSelectedToQueue = () => {
     if (videosToDownload.length > 0) {
       dispatch({ type: 'ADD_TO_DOWNLOAD_QUEUE', payload: videosToDownload });
-      // Clear selection after adding to queue, so the "Download Selected" button resets
       dispatch({ type: 'DESELECT_ALL_VIDEOS' }); 
     }
   };
@@ -28,7 +27,7 @@ export default function Header() {
         <div className="flex items-center gap-3">
           <Youtube className="h-8 w-8 text-primary" />
           <Link href="/" className="text-2xl font-headline font-semibold text-foreground hover:text-primary transition-colors">
-            OfflineTube
+            Dushyath Youtube Downloader
           </Link>
           <span className="text-sm text-muted-foreground ml-2 hidden sm:inline">
             {state.channelName}
@@ -36,14 +35,13 @@ export default function Header() {
         </div>
         <div className="flex items-center gap-3">
           {selectedCount > 0 && (
-            <div className="flex items-center gap-2 text-sm text-muted-foreground">
-              <CheckCircle className="h-5 w-5 text-accent" />
-              <span>{selectedCount} video{selectedCount > 1 ? 's' : ''} selected</span>
-            </div>
+            <Button variant="ghost" size="sm" className="text-muted-foreground pointer-events-none">
+              {selectedCount} video{selectedCount > 1 ? 's' : ''} selected
+            </Button>
           )}
           <Button 
             variant="default" 
-            size="lg" // Kept size lg for prominence
+            size="lg"
             onClick={handleDownloadAllSelectedToQueue}
             disabled={selectedCount === 0}
             className="bg-accent hover:bg-accent/90 text-accent-foreground"
@@ -56,12 +54,11 @@ export default function Header() {
               <Archive className="h-5 w-5" />
             </Link>
           </Button>
-          <Button variant="outline" size="icon" onClick={() => setIsSettingsOpen(true)} aria-label="Settings">
-            <Settings className="h-5 w-5" />
-          </Button>
+          {/* Settings button removed */}
         </div>
       </div>
-      <SettingsDialog isOpen={isSettingsOpen} onOpenChange={setIsSettingsOpen} />
+      {/* SettingsDialog component removed */}
     </header>
   );
 }
+

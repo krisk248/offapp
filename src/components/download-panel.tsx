@@ -1,11 +1,12 @@
 
+
 "use client";
 
 import { useAppContext } from '@/store/app-context';
 import { Button } from '@/components/ui/button';
 import { Progress } from '@/components/ui/progress';
 import { ScrollArea } from '@/components/ui/scroll-area';
-import { Card, CardContent, CardHeader, CardTitle, CardFooter } from '@/components/ui/card';
+// Card components are removed for direct page layout
 import { Download, PauseCircle, PlayCircle, Trash2, CheckCircle, Clock, Archive, ServerCrash } from 'lucide-react';
 import type { DownloadItem } from '@/types';
 import Image from 'next/image';
@@ -18,6 +19,7 @@ export default function DownloadPanel() {
   const { toast } = useToast();
   const [isZipping, setIsZipping] = useState(false);
 
+  // handlePause and handleResume are less relevant if individual download control is de-emphasized for ZIP only
   const handlePause = (videoId: string) => {
     dispatch({ type: 'SET_DOWNLOAD_ITEM_STATUS', payload: { videoId, status: 'paused' } });
     console.log(`[Download Panel] Paused (simulated) for video ID: ${videoId}`);
@@ -72,7 +74,7 @@ export default function DownloadPanel() {
       a.href = url;
       
       const contentDisposition = response.headers.get('content-disposition');
-      let downloadFilename = `OfflineTube_Downloads_${new Date().toISOString().split('T')[0]}.zip`;
+      let downloadFilename = `Dushyath_Youtube_Downloads_${new Date().toISOString().split('T')[0]}.zip`;
       if (contentDisposition) {
         const filenameMatch = contentDisposition.match(/filename="?(.+)"?/i);
         if (filenameMatch && filenameMatch.length > 1) {
@@ -109,7 +111,7 @@ export default function DownloadPanel() {
         return <PauseCircle className="h-4 w-4 text-yellow-500" />;
       case 'error':
         return <ServerCrash className="h-4 w-4 text-destructive" />;
-      case 'completed': 
+      case 'completed': // This status might not be actively set if ZIP is the goal
         return <CheckCircle className="h-4 w-4 text-green-700" />;
       default:
         return null;
@@ -118,13 +120,13 @@ export default function DownloadPanel() {
   
   const readyForZipCount = downloadQueue.filter(item => item.status === 'server_download_ready' && item.filename).length;
   const totalProgress = downloadQueue.length > 0 
-    ? downloadQueue.reduce((acc, item) => acc + (item.status === 'server_download_ready' || item.status === 'completed' ? 100 : item.progress), 0) / downloadQueue.length
+    ? downloadQueue.reduce((acc, item) => acc + (item.status === 'server_download_ready' || item.status === 'completed' ? 100 : (item.status === 'initiating_server_download' ? 10 : (item.status === 'server_downloading' ? item.progress : 0) ) ), 0) / downloadQueue.length
     : 0;
-
+  // Panel is no longer a Card, apply styling directly or to child elements
   return (
-    <Card className="shadow-lg rounded-lg flex flex-col"> {/* Removed max-h for page context */}
-      <CardHeader className="border-b">
-        <CardTitle className="text-xl font-headline flex items-center justify-between">
+    <div className="bg-background shadow-lg rounded-lg border"> 
+      <div className="border-b p-4 sm:p-6">
+        <h3 className="text-xl font-headline flex items-center justify-between">
           <span>
             <Download className="mr-2 h-6 w-6 text-primary inline-block" />
             Download Queue
@@ -134,27 +136,27 @@ export default function DownloadPanel() {
               onClick={handleDownloadAllAsZip} 
               variant="default" 
               size="sm"
-              disabled={isZipping}
+              disabled={isZipping || readyForZipCount === 0}
               className="bg-accent hover:bg-accent/90"
             >
               <Archive className="mr-2 h-4 w-4" />
               {isZipping ? 'Zipping...' : `Download All Ready as ZIP (${readyForZipCount})`}
             </Button>
           )}
-        </CardTitle>
-      </CardHeader>
-      <CardContent className="p-0 flex-grow overflow-hidden">
+        </h3>
+      </div>
+      <div className="p-0 flex-grow overflow-hidden">
         {downloadQueue.length === 0 ? (
-          <div className="p-6 text-center text-muted-foreground h-full flex flex-col justify-center items-center min-h-[300px]">
+          <div className="p-6 text-center text-muted-foreground min-h-[300px] flex flex-col justify-center items-center">
             <DownloadCloudIcon className="w-16 h-16 mb-4 text-gray-300" />
             <p>Your download queue is empty.</p>
-            <p className="text-sm">Select videos from the main page and add them to the queue.</p>
+            <p className="text-sm">Select videos and add them to the queue to begin.</p>
           </div>
         ) : (
-          <ScrollArea className="h-full p-1 max-h-[calc(100vh-350px)] sm:max-h-[calc(100vh-300px)]"> {/* Adjusted max-h */}
+          <ScrollArea className="h-full p-1 max-h-[calc(100vh-350px)] sm:max-h-[calc(100vh-300px)]"> 
             <div className="space-y-3 p-3">
             {downloadQueue.map(item => (
-              <div key={item.id} className="p-3 border rounded-md bg-background/50">
+              <div key={item.id} className="p-3 border rounded-md bg-background/50 hover:shadow-md transition-shadow">
                 <div className="flex items-center gap-3 mb-2">
                    <Image 
                     src={item.thumbnailUrl} 
@@ -180,26 +182,20 @@ export default function DownloadPanel() {
                      <Progress value={100} className="h-2 mb-2 [&>div]:bg-green-500" />
                 )}
 
-
                 <div className="flex justify-end items-center gap-2">
                   <span className="text-xs text-muted-foreground mr-auto">
-                    {item.status === 'server_download_ready' ? 'Ready to Download' : 
+                    {item.status === 'server_download_ready' ? 'Ready for ZIP' : 
                      item.status === 'initiating_server_download' ? 'Starting...' :
                      item.status === 'error' ? 'Failed' :
+                     item.status === 'paused' ? 'Paused' :
                      item.status.replace(/_/g, ' ')} 
-                    { (item.status !== 'server_download_ready' && item.status !== 'error') && ` - ${item.progress.toFixed(0)}%`}
+                    { (item.status !== 'server_download_ready' && item.status !== 'error' && item.status !== 'paused') && ` - ${item.progress.toFixed(0)}%`}
                   </span>
 
-                  {item.status === 'server_download_ready' && item.downloadUrl && (
-                     <Button asChild variant="default" size="sm" className="h-7 bg-accent hover:bg-accent/90">
-                        <a href={item.downloadUrl} download={item.filename || true} target="_blank" rel="noopener noreferrer">
-                            <Download className="h-4 w-4 mr-1" /> Download Now
-                        </a>
-                     </Button>
-                  )}
+                  {/* Individual "Download Now" button removed for ZIP-only approach */}
                   
                   {(item.status === 'initiating_server_download' || item.status === 'server_downloading') && (
-                    <Button variant="ghost" size="icon" onClick={() => handlePause(item.id)} className="h-7 w-7" title="Pause (simulation)">
+                    <Button variant="ghost" size="icon" onClick={() => handlePause(item.id)} className="h-7 w-7" title="Pause Download">
                       <PauseCircle className="h-4 w-4" />
                     </Button>
                   )}
@@ -208,8 +204,9 @@ export default function DownloadPanel() {
                       <PlayCircle className="h-4 w-4" />
                     </Button>
                   )}
+                  {/* Cancel button can remain for all non-ready states */}
                   {(item.status !== 'server_download_ready' && item.status !== 'completed') && (
-                    <Button variant="ghost" size="icon" onClick={() => handleCancel(item.id)} className="h-7 w-7 text-destructive hover:text-destructive" title="Cancel Download">
+                    <Button variant="ghost" size="icon" onClick={() => handleCancel(item.id)} className="h-7 w-7 text-destructive hover:text-destructive" title="Cancel & Remove">
                       <Trash2 className="h-4 w-4" />
                     </Button>
                   )}
@@ -219,11 +216,11 @@ export default function DownloadPanel() {
             </div>
           </ScrollArea>
         )}
-      </CardContent>
+      </div>
       {downloadQueue.length > 0 && (
-        <CardFooter className="border-t p-4 space-y-2 flex-col items-stretch">
+        <div className="border-t p-4 space-y-2 flex-col items-stretch">
             <div className="flex justify-between items-center text-sm mb-1">
-                <span>Overall Server Download Progress</span>
+                <span>Overall Server Progress (All Queued Items)</span>
                 <span className="font-semibold text-accent">{totalProgress.toFixed(0)}%</span>
             </div>
             <Progress value={totalProgress} className="h-3 [&>div]:bg-primary" />
@@ -232,9 +229,9 @@ export default function DownloadPanel() {
                 <Trash2 className="mr-2 h-4 w-4" /> Clear Finished/Failed
               </Button>
             )}
-        </CardFooter>
+        </div>
       )}
-    </Card>
+    </div>
   );
 }
 
@@ -259,3 +256,4 @@ function DownloadCloudIcon(props: React.SVGProps<SVGSVGElement>) {
     </svg>
   )
 }
+

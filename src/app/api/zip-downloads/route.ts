@@ -1,3 +1,4 @@
+
 // src/app/api/zip-downloads/route.ts
 import { NextRequest, NextResponse } from 'next/server';
 import archiver from 'archiver';
@@ -22,7 +23,7 @@ export async function POST(req: NextRequest) {
     for (const filename of filenames) {
       if (typeof filename !== 'string' || filename.includes('..') || filename.includes('/')) {
         console.warn(`[API /zip-downloads] Invalid or potentially malicious filename skipped: ${filename}`);
-        continue; // Basic security: prevent path traversal
+        continue; 
       }
       const filePath = path.join(downloadsDir, filename);
       if (fs.existsSync(filePath)) {
@@ -39,7 +40,7 @@ export async function POST(req: NextRequest) {
 
     const passThrough = new PassThrough();
     const archive = archiver('zip', {
-      zlib: { level: 9 } // Sets the compression level.
+      zlib: { level: 9 } 
     });
 
     archive.on('warning', function(err) {
@@ -47,13 +48,11 @@ export async function POST(req: NextRequest) {
         console.warn('[API /zip-downloads] Archiver warning:', err);
       } else {
         console.error('[API /zip-downloads] Archiver error:', err);
-        // Cannot send response here as headers might be sent.
       }
     });
 
     archive.on('error', function(err) {
       console.error('[API /zip-downloads] Archiver fatal error:', err);
-      // Cannot send response here.
     });
     
     archive.pipe(passThrough);
@@ -66,7 +65,7 @@ export async function POST(req: NextRequest) {
     archive.finalize();
     console.log('[API /zip-downloads] Finalized archive. Streaming response.');
     
-    const zipFilename = `OfflineTube_Downloads_${new Date().toISOString().split('T')[0]}.zip`;
+    const zipFilename = `Dushyath_Youtube_Downloads_${new Date().toISOString().split('T')[0]}.zip`;
     const headers = new Headers();
     headers.set('Content-Type', 'application/zip');
     headers.set('Content-Disposition', `attachment; filename="${zipFilename}"`);
@@ -79,3 +78,4 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ success: false, message: error.message || 'Failed to create ZIP file.' }, { status: 500 });
   }
 }
+

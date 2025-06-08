@@ -1,10 +1,11 @@
+
 import type { Metadata } from 'next';
 import './globals.css';
 import { Toaster } from "@/components/ui/toaster";
 import { AppProvider } from '@/store/app-context'; // Import AppProvider
 
 export const metadata: Metadata = {
-  title: 'OfflineTube',
+  title: 'Dushyath Youtube Downloader',
   description: 'Download YouTube videos for offline viewing.',
 };
 
@@ -29,3 +30,4 @@ export default function RootLayout({
     </html>
   );
 }
+
