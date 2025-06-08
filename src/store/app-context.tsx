@@ -1,3 +1,4 @@
+
 "use client";
 
 import type { Video, DownloadItem, AppSettings, YouTubePlaylist } from '@/types';
@@ -103,20 +104,20 @@ function appReducer(state: AppState, action: Action): AppState {
         },
       };
     case 'UPDATE_SETTINGS':
+      console.log('Updating settings:', action.payload);
       return {
         ...state,
         settings: { ...state.settings, ...action.payload },
         globalQuality: action.payload.defaultQuality ?? state.globalQuality,
-        // Reset channel info if URL changes, to trigger refetch
         channelId: action.payload.channelUrl !== state.settings.channelUrl ? null : state.channelId,
         uploadsPlaylistId: action.payload.channelUrl !== state.settings.channelUrl ? null : state.uploadsPlaylistId,
         channelName: action.payload.channelUrl !== state.settings.channelUrl ? 'OfflineTube' : state.channelName,
         videos: action.payload.channelUrl !== state.settings.channelUrl ? [] : state.videos,
         playlists: action.payload.channelUrl !== state.settings.channelUrl ? [] : state.playlists,
         selectedPlaylistId: action.payload.channelUrl !== state.settings.channelUrl ? null : state.selectedPlaylistId,
-
       };
     case 'SET_CHANNEL_INFO':
+      console.log('Channel info set:', action.payload);
       return {
         ...state,
         channelId: action.payload.id,
@@ -125,43 +126,71 @@ function appReducer(state: AppState, action: Action): AppState {
       };
     case 'ADD_TO_DOWNLOAD_QUEUE': {
       const newItems: DownloadItem[] = action.payload
-        .filter(video => !state.downloadQueue.some(item => item.id === video.id)) // Avoid duplicates
+        .filter(video => !state.downloadQueue.some(item => item.id === video.id)) 
         .map(video => ({
           ...video,
           selectedQuality: state.videoQualities[video.id] || state.globalQuality,
           progress: 0,
           status: 'queued',
         }));
+      if (newItems.length > 0) {
+        console.log(`[Download Queue] Added ${newItems.length} items:`, newItems.map(i => i.title));
+      }
       return { ...state, downloadQueue: [...state.downloadQueue, ...newItems] };
     }
-    case 'UPDATE_DOWNLOAD_PROGRESS':
+    case 'UPDATE_DOWNLOAD_PROGRESS': {
+      const { videoId, progress } = action.payload;
+      const item = state.downloadQueue.find(i => i.id === videoId);
+      if (item) {
+        console.log(`[Download Progress] Video: "${item.title}" (${videoId}), Progress: ${progress}%`);
+        if (progress === 100) {
+           console.log(`[Download Complete] Video: "${item.title}" (${videoId})`);
+        }
+      }
       return {
         ...state,
         downloadQueue: state.downloadQueue.map(item =>
-          item.id === action.payload.videoId
-            ? { ...item, progress: action.payload.progress, status: action.payload.progress === 100 ? 'completed' : item.status === 'queued' ? 'downloading' : item.status }
+          item.id === videoId
+            ? { ...item, progress: progress, status: progress === 100 ? 'completed' : item.status === 'queued' ? 'downloading' : item.status }
             : item
         ),
       };
-    case 'SET_DOWNLOAD_ITEM_STATUS':
+    }
+    case 'SET_DOWNLOAD_ITEM_STATUS': {
+      const { videoId, status } = action.payload;
+      const item = state.downloadQueue.find(i => i.id === videoId);
+      if(item) {
+        console.log(`[Download Status] Video: "${item.title}" (${videoId}), Status changed to: ${status}`);
+      }
       return {
         ...state,
         downloadQueue: state.downloadQueue.map(item =>
-          item.id === action.payload.videoId
-            ? { ...item, status: action.payload.status }
+          item.id === videoId
+            ? { ...item, status: status }
             : item
         ),
       };
-    case 'REMOVE_FROM_DOWNLOAD_QUEUE':
+    }
+    case 'REMOVE_FROM_DOWNLOAD_QUEUE': {
+        const item = state.downloadQueue.find(i => i.id === action.payload);
+        if(item) {
+          console.log(`[Download Queue] Removed: "${item.title}" (${action.payload})`);
+        }
         return {
             ...state,
             downloadQueue: state.downloadQueue.filter(item => item.id !== action.payload)
         };
-    case 'CLEAR_COMPLETED_DOWNLOADS':
+    }
+    case 'CLEAR_COMPLETED_DOWNLOADS': {
+        const completedCount = state.downloadQueue.filter(item => item.status === 'completed').length;
+        if (completedCount > 0) {
+            console.log(`[Download Queue] Cleared ${completedCount} completed downloads.`);
+        }
         return {
             ...state,
             downloadQueue: state.downloadQueue.filter(item => item.status !== 'completed')
         };
+    }
     default:
       return state;
   }
@@ -182,7 +211,6 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
   const fetchAndSetChannelData = useCallback(async () => {
     if (!state.settings.apiKey || !state.settings.channelUrl) {
-      // Clear data if API key or URL is missing
       dispatch({ type: 'SET_CHANNEL_INFO', payload: { id: null, uploadsPlaylistId: null, title: 'OfflineTube' } });
       dispatch({ type: 'SET_PLAYLISTS', payload: [] });
       dispatch({ type: 'SET_VIDEOS', payload: [] });
@@ -196,15 +224,15 @@ export function AppProvider({ children }: { children: ReactNode }) {
       return;
     }
     
-    // Fetch channel details first (includes uploadsPlaylistId)
-    if (!state.channelId || !state.uploadsPlaylistId) {
-        dispatch({ type: 'SET_LOADING_PLAYLISTS', payload: true }); // General loading state
+    if (!state.channelId || !state.uploadsPlaylistId || state.settings.channelUrl !== localStorage.getItem('prevChannelUrl')) {
+        localStorage.setItem('prevChannelUrl', state.settings.channelUrl); // Store current URL to compare
+        dispatch({ type: 'SET_LOADING_PLAYLISTS', payload: true }); 
         dispatch({ type: 'SET_LOADING_VIDEOS', payload: true });
+        console.log(`Fetching channel details for: ${channelHandleOrId}`);
         try {
             const channelInfo = await fetchChannelDetails(state.settings.apiKey, channelHandleOrId);
             if (channelInfo) {
                 dispatch({ type: 'SET_CHANNEL_INFO', payload: channelInfo });
-                // Now channelInfo.id and channelInfo.uploadsPlaylistId are set in state for next effect
             } else {
                 toast({ title: 'Channel Not Found', description: 'Could not fetch channel details.', variant: 'destructive' });
                 dispatch({ type: 'SET_CHANNEL_INFO', payload: { id: null, uploadsPlaylistId: null, title: 'OfflineTube' } });
@@ -213,6 +241,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
             }
         } catch (error: any) {
             toast({ title: 'API Error (Channel)', description: error.message || 'Failed to fetch channel details.', variant: 'destructive' });
+            console.error('API Error (Channel):', error);
             dispatch({ type: 'SET_LOADING_PLAYLISTS', payload: false });
             dispatch({ type: 'SET_LOADING_VIDEOS', payload: false });
         }
@@ -220,41 +249,53 @@ export function AppProvider({ children }: { children: ReactNode }) {
   }, [state.settings.apiKey, state.settings.channelUrl, state.channelId, state.uploadsPlaylistId, toast]);
 
 
-  // Effect to fetch initial channel info (ID, uploads playlist ID)
   useEffect(() => {
     fetchAndSetChannelData();
   }, [fetchAndSetChannelData]);
 
 
-  // Effect to fetch playlists once channelId is known
   useEffect(() => {
     const fetchPlaylists = async () => {
-      if (state.settings.apiKey && state.channelId && state.playlists.length === 0) { // only fetch if not already fetched
+      if (state.settings.apiKey && state.channelId && (state.playlists.length === 0 || state.settings.channelUrl !== localStorage.getItem('prevPlaylistsChannelUrl'))) { 
+        localStorage.setItem('prevPlaylistsChannelUrl', state.settings.channelUrl);
         dispatch({ type: 'SET_LOADING_PLAYLISTS', payload: true });
+        console.log(`Fetching playlists for channel ID: ${state.channelId}`);
         try {
           const playlistsData = await fetchChannelPlaylists(state.settings.apiKey, state.channelId);
           dispatch({ type: 'SET_PLAYLISTS', payload: playlistsData });
         } catch (error: any) {
           toast({ title: 'API Error (Playlists)', description: error.message || 'Failed to fetch playlists.', variant: 'destructive' });
+          console.error('API Error (Playlists):', error);
           dispatch({ type: 'SET_LOADING_PLAYLISTS', payload: false });
         }
       }
     };
-    fetchPlaylists();
-  }, [state.settings.apiKey, state.channelId, state.playlists.length, toast]);
+    if(state.channelId) fetchPlaylists(); // Ensure channelId is present before fetching
+  }, [state.settings.apiKey, state.channelId, state.playlists.length, state.settings.channelUrl, toast]);
 
 
-  // Effect to fetch videos based on selected playlist or general uploads
   useEffect(() => {
     const fetchVideos = async () => {
       if (state.settings.apiKey && (state.uploadsPlaylistId || state.selectedPlaylistId)) {
         const playlistToFetch = state.selectedPlaylistId || state.uploadsPlaylistId;
         if (!playlistToFetch) return;
 
+        // Check if videos for this playlist are already loaded to avoid refetch unless playlist changes
+        const currentPlaylistKey = playlistToFetch;
+        const previousPlaylistKey = localStorage.getItem('currentVideosPlaylistKey');
+
+        if (state.videos.length > 0 && currentPlaylistKey === previousPlaylistKey && !state.isLoadingVideos) {
+            // Videos for this context are already loaded and not currently forced to reload
+            // console.log("Videos for playlist already loaded, skipping refetch:", playlistToFetch);
+            return;
+        }
+        localStorage.setItem('currentVideosPlaylistKey', currentPlaylistKey);
+
+
         dispatch({ type: 'SET_LOADING_VIDEOS', payload: true });
+        console.log(`Fetching videos for playlist ID: ${playlistToFetch}`);
         try {
-          // Add playlist name to video if fetching specific playlist items
-          const videosData = await fetchPlaylistItems(state.settings.apiKey, playlistToFetch, 50); // Fetch up to 50 videos
+          const videosData = await fetchPlaylistItems(state.settings.apiKey, playlistToFetch, 50); 
           const currentPlaylist = state.playlists.find(p => p.id === playlistToFetch);
           
           const videosWithPlaylistContext = videosData.map(v => ({
@@ -266,34 +307,72 @@ export function AppProvider({ children }: { children: ReactNode }) {
           dispatch({ type: 'SET_VIDEOS', payload: videosWithPlaylistContext });
         } catch (error: any) {
           toast({ title: 'API Error (Videos)', description: error.message || 'Failed to fetch videos.', variant: 'destructive' });
+          console.error('API Error (Videos):', error);
           dispatch({ type: 'SET_LOADING_VIDEOS', payload: false });
         }
+      } else if (!state.settings.apiKey || !state.settings.channelUrl) {
+          // Clear videos if no API key or channel URL
+          dispatch({ type: 'SET_VIDEOS', payload: [] });
+          localStorage.removeItem('currentVideosPlaylistKey');
       }
     };
-    fetchVideos();
-  }, [state.settings.apiKey, state.uploadsPlaylistId, state.selectedPlaylistId, state.playlists, toast]);
+    if(state.uploadsPlaylistId || state.selectedPlaylistId) fetchVideos(); // Ensure some playlist ID is available
+  }, [state.settings.apiKey, state.settings.channelUrl, state.uploadsPlaylistId, state.selectedPlaylistId, state.playlists, toast, state.videos.length, state.isLoadingVideos ]);
 
 
   // Simulate download progress
   useEffect(() => {
-    const activeDownloads = state.downloadQueue.filter(item => item.status === 'downloading' || (item.status === 'queued' && state.downloadQueue.filter(d => d.status === 'downloading').length < state.settings.concurrentDownloads));
-    
-    activeDownloads.forEach(item => {
-      if (item.status === 'queued') {
+    const activeDownloadSlots = state.settings.concurrentDownloads;
+    let currentlyDownloadingCount = state.downloadQueue.filter(item => item.status === 'downloading').length;
+
+    state.downloadQueue.forEach(item => {
+      // Start new downloads if slots are available and item is queued
+      if (item.status === 'queued' && currentlyDownloadingCount < activeDownloadSlots) {
         dispatch({ type: 'SET_DOWNLOAD_ITEM_STATUS', payload: { videoId: item.id, status: 'downloading' }});
+        currentlyDownloadingCount++;
       }
 
+      // Process items that are 'downloading'
       if (item.status === 'downloading' && item.progress < 100) {
-        const interval = setInterval(() => {
-          dispatch({
-            type: 'UPDATE_DOWNLOAD_PROGRESS',
-            payload: { videoId: item.id, progress: Math.min(item.progress + 10, 100) },
-          });
-        }, 500);
-        return () => clearInterval(interval);
+        const intervalId = `downloadInterval_${item.id}`;
+        // Clear existing interval for this item if any, to avoid multiple intervals
+        const existingInterval = (window as any)[intervalId];
+        if (existingInterval) {
+          clearInterval(existingInterval);
+        }
+
+        // Set a new interval
+        (window as any)[intervalId] = setInterval(() => {
+          // Check if item still exists and is downloading before updating progress
+          const currentItemState = state.downloadQueue.find(i => i.id === item.id);
+          if (currentItemState && currentItemState.status === 'downloading' && currentItemState.progress < 100) {
+            dispatch({
+              type: 'UPDATE_DOWNLOAD_PROGRESS',
+              payload: { videoId: item.id, progress: Math.min(currentItemState.progress + 2, 100) }, // Slower progress step
+            });
+          } else {
+            // If item completed or status changed, clear interval
+            clearInterval((window as any)[intervalId]);
+            delete (window as any)[intervalId];
+            if (currentItemState && currentItemState.progress === 100 && currentItemState.status !== 'completed') {
+                dispatch({type: 'SET_DOWNLOAD_ITEM_STATUS', payload: { videoId: item.id, status: 'completed' }});
+            }
+          }
+        }, 300); // Slower interval
       }
     });
-  }, [state.downloadQueue, state.settings.concurrentDownloads, dispatch]);
+
+    // Cleanup: clear intervals for items no longer in queue or not downloading
+    return () => {
+      state.downloadQueue.forEach(item => {
+        const intervalId = `downloadInterval_${item.id}`;
+        if ((window as any)[intervalId]) {
+          clearInterval((window as any)[intervalId]);
+          delete (window as any)[intervalId];
+        }
+      });
+    };
+  }, [state.downloadQueue, state.settings.concurrentDownloads, dispatch]); // Re-run if queue or settings change
 
 
   return (
@@ -311,3 +390,4 @@ export function useAppContext() {
   }
   return context;
 }
+
